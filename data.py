@@ -1,7 +1,24 @@
-import random, os.path
+import random, os
 
 import matplotlib.pyplot as plt
 import torch, torchvision
+
+
+def prepare_data():
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.1307,), (0.3081,)),
+        ]
+    )
+    dataset = torchvision.datasets.MNIST("data", transform=transform, download=True)
+
+    images = [[] for _ in range(10)]
+    for image, label in dataset:
+        images[label].append(image)
+    torch.save(images, os.path.join("processed", "MNIST_train.pth"))
+
+    return images
 
 
 def show_pair(image1, image2, label, text=""):
@@ -18,12 +35,18 @@ def show_pair(image1, image2, label, text=""):
 
 
 class SiameseNetworkDataset:
-    def __init__(self, transform=torchvision.transforms.ToTensor()):
-        self.images = torch.load(os.path.join("processed data", "MNIST_train.pth"))
+    def __init__(self):
+        if "processed" not in os.listdir():
+            os.mkdir("processed")
+        if "MNIST_train.pth" not in os.listdir("processed"):
+            self.images = prepare_data()
+        else:    
+            self.images = torch.load(os.path.join("processed", "MNIST_train.pth"))
+        
         self.trainset = None
         self.testset = None
 
-    def init_traintest(self, n=18, k=4, p=1/36, *, seed=111):
+    def init_traintest(self, n=18, k=4, p=1 / 36, *, seed=111):
         """ Fills the lists self.trainset and self.testset with tuples of form 
                             (image1, image2, sameclass?). 
             n - the number of pairs to be chosen from each class

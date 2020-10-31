@@ -43,7 +43,7 @@ def init_network():
 
 
 @track
-def train_network(net, criterion, optimizer, *, n_epochs=20, save=False):
+def train_network(net, trainset, criterion, optimizer, *, n_epochs=20, save=False):
     for _ in range(n_epochs):
         for images1, images2, labels in trainset:
             images1, images2, labels = images1.to(device), images2.to(device), labels.to(device)
@@ -60,7 +60,7 @@ def train_network(net, criterion, optimizer, *, n_epochs=20, save=False):
 
 
 @track
-def evaluate_network(net, *, show=True):
+def evaluate_network(net, testset, *, show=True):
     correct = 0
     with torch.no_grad():
         for image1, image2, label in testset:
@@ -75,8 +75,9 @@ def evaluate_network(net, *, show=True):
 
 
 if __name__ == "__main__":
+    dataset = init_dataset()
     trainset, testset = init_dataset(n=18, k=4, p=1 / 36, show=False)
     net, criterion, optimizer = init_network()
-    train_network(net, criterion, optimizer)
-    accuracy = evaluate_network(net)
+    train_network(net, trainset, criterion, optimizer)
+    accuracy = evaluate_network(net, testset)
     print("Accuracy: {:.2%}".format(accuracy))

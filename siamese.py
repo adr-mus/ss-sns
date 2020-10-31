@@ -21,11 +21,11 @@ class SiameseNetwork(nn.Module):
         # dense layers
         self.fcn = nn.Sequential(
             # first
-            nn.Linear(6400, 1024),
-            nn.ReLU(inplace=True),
+            nn.Linear(4096, 1024),
+            nn.ReLU(),
             # second
             nn.Linear(1024, 128),
-            nn.ReLU(inplace=True),
+            nn.ReLU(),
             # third
             nn.Linear(128, 2),
         )
