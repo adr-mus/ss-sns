@@ -85,7 +85,7 @@ class SiameseMNIST:
             raise AttributeError("Use sample_traintest or load_traintest first.")
         return self._testset
 
-    def sample_traintest(self, n=9, k=2, p=1 / 10):
+    def sample_traintest(self, n=9, k=2, p=1 / 10, *, seed=131):
         """ Fills the lists self.trainset and self.testset with tuples of form 
                             (image1, image2, same class?)
             and returns them.
@@ -99,6 +99,8 @@ class SiameseMNIST:
             When n/k = 9/2, there are as many positive examples as negative ones. """
         if self._images is None:
             self.load_images()
+        
+        random.seed(seed)
 
         data = []
 
@@ -125,7 +127,7 @@ class SiameseMNIST:
 
         return self._trainset, self._testset
     
-    def sample_unlabeled(self, m=10):
+    def sample_unlabeled(self, m=10, *, seed=131):
         """ Fills the list self.unlabeled with tuples of form 
                             (image1, image2)
             and returns it.
@@ -134,6 +136,8 @@ class SiameseMNIST:
             - m: the number of unlabeled pairs is equal to 180 * m. """
         if self._images is None:
             self.load_images()
+
+        random.seed(seed)
 
         data = []
 
