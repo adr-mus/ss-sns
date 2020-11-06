@@ -3,20 +3,30 @@ import torch.nn.functional as F
 
 from torch import nn
 
-class ContrastiveLoss(nn.Module):
-    """ Contrastive loss function.
-    Based on: http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf """
 
-    def __init__(self, margin=2.0):
-        nn.Module.__init__(self)
+class ContrastiveLoss(nn.Module):
+    def __init__(self, margin=1.0):
+        torch.nn.Module.__init__(self)
         self.margin = margin
 
     def forward(self, output1, output2, label):
-        euclidean_distance = F.pairwise_distance(output1, output2)
-        loss_contrastive = torch.mean(
-            (1 - label) * torch.pow(euclidean_distance, 2)
-            + (label)
-            * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2)
+        dist = F.pairwise_distance(output1, output2)
+        loss = torch.mean(
+            (1 - label) * torch.square(dist)
+            + label * torch.square(F.relu(self.margin - dist))
         )
 
-        return loss_contrastive
+        return loss
+
+
+class ClassificationLoss(nn.Module):
+    def forward(self, outputs1, outputs2, labels):
+        distances = F.pairwise_distance(outputs1, outputs2)
+        predictions = 1 - F.tanh(distances)
+        return F.binary_cross_entropy(predictions, labels)
+
+
+class ReconstructionLoss(nn.Module):
+    def forward(self, input, output):
+        return torch.norm(output - input)
+
