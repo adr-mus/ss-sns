@@ -1,7 +1,6 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-
-from torch import nn
 
 
 class ContrastiveLoss(nn.Module):
@@ -11,15 +10,14 @@ class ContrastiveLoss(nn.Module):
 
     def forward(self, output1, output2, label):
         dist = F.pairwise_distance(output1, output2)
-        loss = torch.mean(
-            (1 - label) * torch.square(dist)
-            + label * torch.square(F.relu(self.margin - dist))
-        )
+        loss = (
+            (1 - label) * dist.square() + label * F.relu(self.margin - dist).square()
+        ).mean()
 
         return loss
 
 
-class ClassificationLoss(nn.Module):
+class ModifiedCrossEntropy(nn.Module):
     def forward(self, outputs1, outputs2, labels):
         distances = F.pairwise_distance(outputs1, outputs2)
         predictions = 1 - F.tanh(distances)
@@ -28,5 +26,4 @@ class ClassificationLoss(nn.Module):
 
 class ReconstructionLoss(nn.Module):
     def forward(self, input, output):
-        return torch.norm(output - input)
-
+        return torch.norm(output - input)  # / output.shape[0]

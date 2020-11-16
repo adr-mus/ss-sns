@@ -1,9 +1,13 @@
+import itertools
+
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
-from torch import nn
+from metrics import ModifiedCrossEntropy, ReconstructionLoss
 
-from metrics import ClassificationLoss, ReconstructionLoss
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 class DiscriminativeSNN(nn.Module):
@@ -14,18 +18,18 @@ class DiscriminativeSNN(nn.Module):
         # input: 1 @ 28x28
         self.cnn = nn.Sequential(
             # first
-            nn.Conv2d(1, 8, kernel_size=3, stride=1), # 8 @ 26x26
+            nn.Conv2d(1, 8, kernel_size=3, stride=1),  # 8 @ 26x26
             nn.ReLU(),
-            nn.MaxPool2d(2, stride=2), # 8 @ 13x13 
+            nn.MaxPool2d(2, stride=2),  # 8 @ 13x13
             nn.Dropout2d(p=0.5),
             # second
-            nn.Conv2d(8, 8, kernel_size=4, stride=1), # 8 @ 10x10
+            nn.Conv2d(8, 8, kernel_size=4, stride=1),  # 8 @ 10x10
             nn.ReLU(),
-            nn.MaxPool2d(2, stride=2), # 8 @ 5x5
+            nn.MaxPool2d(2, stride=2),  # 8 @ 5x5
             nn.Dropout2d(p=0.5),
-            nn.Flatten()
+            nn.Flatten(),
         )
-        
+
         # dense layers
         # input: 200
         self.dnn = nn.Sequential(
@@ -62,13 +66,13 @@ class GenerativeSNN(nn.Module):
         # input: 8 @ 5x5
         self.cnn = nn.Sequential(
             # first
-            nn.Upsample(scale_factor=2), # 8 @ 10x10
-            nn.ConvTranspose2d(8, 8, kernel_size=4, stride=1), # 8 @ 13x13
+            nn.Upsample(scale_factor=2),  # 8 @ 10x10
+            nn.ConvTranspose2d(8, 8, kernel_size=4, stride=1),  # 8 @ 13x13
             nn.ReLU(),
             nn.Dropout2d(p=0.5),
             # second
-            nn.Upsample(scale_factor=2), # 8 @ 26x26
-            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=1), # 1 @ 28x28
+            nn.Upsample(scale_factor=2),  # 8 @ 26x26
+            nn.ConvTranspose2d(8, 1, kernel_size=3, stride=1),  # 1 @ 28x28
             nn.Sigmoid(),
             nn.Dropout2d(p=0.5),
         )
@@ -88,93 +92,159 @@ class GenerativeSNN(nn.Module):
         return output1, output2
 
 
+def train_model(trainset, testset, unlabeled, alpha, beta, lr=0.001, E=150, T=0.5):
+    """ alpha - importance of reconstruction loss
+        beta - l2 regularization 
+        lr - learning rate 
+        E - number of epochs 
+        T - threshold """
+    # initialize nets, criterions and optimizer
+    net1, net2 = DiscriminativeSNN().to(device), GenerativeSNN().to(device)
+    nets_parameters = itertools.chain(net1.parameters(), net2.parameters())
+    criterion1, criterion2 = ClassificationLoss(), ReconstructionLoss()
+    optimizer = torch.optim.RMSprop(nets_parameters, lr=lr, weight_decay=beta)
+
+    # training
+    print(f"alpha = {alpha}, beta = {beta}")
+    for _ in range(E):  # the number of epochs
+        for tensors1, tensors2 in itertools.zip_longest(trainset, unlabeled):
+            optimizer.zero_grad()
+            loss = 0.0
+
+            if tensors1: # labeled data
+                images1, images2, labels = (t.to(device) for t in tensors1)
+
+                # first net
+                outputs1, outputs2 = net1(images1, images2)
+                loss1 = criterion1(outputs1, outputs2, labels)
+
+                # second net
+                images1_, images2_ = net2(outputs1, outputs2)
+                loss2 = criterion2(images1, images1_) + criterion2(images2, images2_)
+
+                # final loss
+                loss += loss1 + alpha * loss2
+
+            if tensors2: # unlabeled data
+                images1, images2 = (t.to(device) for t in tensors2)
+
+                # first net
+                outputs1, outputs2 = net1(images1, images2)
+
+                # second net
+                images1_, images2_ = net2(outputs1, outputs2)
+                loss2 = criterion2(images1, images1_) + criterion2(images2, images2_)
+
+                # final loss
+                loss += alpha * loss2
+
+            loss.backward()
+            optimizer.step()
+
+    # evaluation - accuracy
+    net1.eval()
+    net2.eval()
+    correct = total = 0
+    with torch.no_grad():
+        for tensors in testset:
+            images1, images2, labels = (t.to(device) for t in tensors)
+            outputs1, outputs2 = net1(images1, images2)
+            dists = F.pairwise_distance(outputs1, outputs2)
+            preds = (dists <= T).float()
+            correct += torch.isclose(labels.squeeze(), preds).sum().item()
+            total += labels.shape[0]
+    accuracy = correct / total
+    net1.train()
+    net2.train()
+
+    return net1, net2, accuracy
+
+
 if __name__ == "__main__":
-    import os, itertools
+    import numpy as np
+    import matplotlib.pyplot as plt
 
-    from data import SiameseMNIST, show_pair
-
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    from data import SiameseMNIST
 
     # load data and prepare it
     dataset = SiameseMNIST()
-    # dataset.sample_traintest()
-    # dataset.sample_unlabeled()
     dataset.load_traintest()
     dataset.load_unlabeled()
 
-    trainset = torch.utils.data.DataLoader(dataset.trainset, batch_size=32)
-    unlabeled = torch.utils.data.DataLoader(dataset.unlabeled, batch_size=128)
-    testset = torch.utils.data.DataLoader(dataset.testset, batch_size=1)
-    print("Data ready.")
+    batch_size = 64
+    trainset = torch.utils.data.DataLoader(dataset.trainset, batch_size=batch_size)
+    unlabeled = torch.utils.data.DataLoader(dataset.unlabeled[:len(dataset.trainset)], batch_size=batch_size)
+    testset = torch.utils.data.DataLoader(dataset.testset, batch_size=len(dataset.testset))
 
-    # initialize nets and optimizers
-    net1, net2 = DiscriminativeSNN().to(device), GenerativeSNN().to(device)
-    criterion1, criterion2 = ClassificationLoss(), ReconstructionLoss()
-    alpha = 0.5 # importance of reconstruction loss
-    beta = 0.001 # l2 regularization
-    lr = 0.001
-    optimizer = torch.optim.RMSprop(itertools.chain(net1.parameters(), net2.parameters()), lr=lr, weight_decay=beta)
-    print("Nets ready. Beginning training.")
+    # grid of paramters
+    alphas = [0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5]
+    betas = [0.0001, 0.001, 0.01, 0.1, 1]
 
-    # training
-    for i in range(150): # the number of epochs
-        if i != 0 and i % 15 == 0:
-            print(f"{i} epochs passed.")
+    # grid search
+    n_loops = 25
+    results = {hps: [train_model(trainset, testset, unlabeled, *hps)[2] for _ in range(n_loops)] 
+                    for hps in itertools.product(alphas, betas)}
+    torch.save(results, "grid_search_results.ptx")
 
-        # labeled data
-        for tensors in trainset:
-            images1, images2, labels = (t.to(device) for t in tensors)
-            optimizer.zero_grad()
+    # results
+    avgs = {hps: np.round(np.mean(res), 2) for hps, res in results.items()} 
+    sorted_avgs = sorted(avgs.items(), key=lambda el: el[1], reverse=True)
+    print("\nalpha, beta | accuracy")
+    print(*sorted_avgs, sep="\n")
 
-            # first net
-            outputs1, outputs2 = net1(images1, images2)
-            loss1 = criterion1(outputs1, outputs2, labels)
+    # visualization
+    k = 6
+    best_hps = [sorted_avgs[i][0] for i in range(k)]
+    best_results = [results[hps] for hps in best_hps]
+    labels = [f"$\\alpha$ = {a}\n$\\beta$ = {b}" for a, b in best_hps]
 
-            # second net
-            images1_, images2_ = net2(outputs1, outputs2)
-            loss2 = criterion2(images1, images1_) + criterion2(images2, images2_)
+    plt.figure(figsize=(8, 4))
+    plt.title(f"Summary of best hiperparamters ({n_loops} loops each)")
+    plt.boxplot(best_results, labels=labels)
+    plt.plot(range(1, k + 1), [sorted_avgs[i][1] for i in range(k)], "--", marker=".")
+    plt.ylabel("Accuracy")
+    plt.grid(axis="y")
+    plt.show()
 
-            # final loss
-            loss = loss1 + alpha * loss2
-
-            loss.backward()
-            optimizer.step()
-        
-        # unlabeled data
-        for tensors in unlabeled:
-            images1, images2 = (t.to(device) for t in tensors)
-            optimizer.zero_grad()
-
-            # first net
-            outputs1, outputs2 = net1(images1, images2)
-
-            # second net
-            images1_, images2_ = net2(outputs1, outputs2)
-            loss2 = criterion2(images1, images1_) + criterion2(images2, images2_)
-
-            loss = alpha *  loss2
-
-            loss.backward()
-            optimizer.step()
-
-    # save model
-    # if "models" not in os.listdir():
-    #     os.mkdir("models")
-    # torch.save(net1.state_dict(), os.path.join("models", "SEVEN_discriminative.pth"))
-    # torch.save(net2.state_dict(), os.path.join("models", "SEVEN_generative.pth"))
-    # print("Model saved.")
-
-    # evaluation
-    T = 0.5 # threshold
-    with torch.no_grad():
-        correct = 0
-        for tensors in testset: # one-element batches
-            image1, image2, label = (t.to(device) for t in tensors)
-            output1, output2 = net1(image1, image2)
-            dist = F.pairwise_distance(output1, output2)
-            pred = (dist < T).float()
-            # show_pair(image1, image2, label, "predicted {} ({:.4f})".format(pred.item(), dist.item()))
-            correct += (label == pred).item()
-    accuracy = correct / len(testset)
-    print("Evaluation finished. Accuracy: {:.2%}.".format(accuracy))
+    # alpha, beta | accuracy
+    # ((1, 0.1), 0.73)
+    # ((1, 1), 0.72)
+    # ((2, 0.0001), 0.71)
+    # ((2, 0.01), 0.71)
+    # ((2, 0.1), 0.71)
+    # ((2, 1), 0.71)
+    # ((2, 0.001), 0.7)
+    # ((1, 0.001), 0.69)
+    # ((0.5, 0.1), 0.67)
+    # ((1, 0.0001), 0.67)
+    # ((1, 0.01), 0.66)
+    # ((0.5, 0.0001), 0.61)
+    # ((0.5, 1), 0.61)
+    # ((0.5, 0.01), 0.6)
+    # ((0.5, 0.001), 0.59)
+    # ((5, 0.01), 0.58)
+    # ((5, 0.1), 0.58)
+    # ((5, 1), 0.58)
+    # ((5, 0.0001), 0.57)
+    # ((5, 0.001), 0.57)
+    # ((0.2, 0.1), 0.56)
+    # ((0.2, 0.01), 0.55)
+    # ((0.1, 0.1), 0.53)
+    # ((0.2, 0.0001), 0.53)
+    # ((0.1, 0.0001), 0.52)
+    # ((0.1, 0.01), 0.52)
+    # ((0.2, 0.001), 0.52)
+    # ((0.1, 0.001), 0.51)
+    # ((0.01, 0.0001), 0.5)
+    # ((0.01, 0.001), 0.5)
+    # ((0.01, 0.01), 0.5)
+    # ((0.01, 0.1), 0.5)
+    # ((0.01, 1), 0.5)
+    # ((0.05, 0.0001), 0.5)
+    # ((0.05, 0.001), 0.5)
+    # ((0.05, 0.01), 0.5)
+    # ((0.05, 0.1), 0.5)
+    # ((0.05, 1), 0.5)
+    # ((0.1, 1), 0.5)
+    # ((0.2, 1), 0.5)
+   

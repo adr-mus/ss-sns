@@ -85,7 +85,7 @@ class SiameseMNIST:
             raise AttributeError("Use sample_traintest or load_traintest first.")
         return self._testset
 
-    def sample_traintest(self, n=9, k=2, p=1 / 10, *, seed=131):
+    def sample_traintest(self, n=9, k=2, p=1 / 6, *, seed=111):
         """ Fills the lists self.trainset and self.testset with tuples of form 
                             (image1, image2, same class?)
             and returns them.
@@ -93,7 +93,7 @@ class SiameseMNIST:
             Parameters:
             - n: the number of pairs to be chosen for each class,
             - k: the number of pairs to be chosen for each pair of different classes,
-            - p: the size of the test set (0.0 - 1.0).
+            - p: the size of the test set (0.0-1.0).
 
             The number of same-class pairs: 10*n, different-class pairs: 45*k.
             When n/k = 9/2, there are as many positive examples as negative ones. """
@@ -102,32 +102,39 @@ class SiameseMNIST:
         
         random.seed(seed)
 
-        data = []
-
         # same-class pairs
+        scp = []
         for i in range(10):
             images = random.sample(self.images[i], 2 * n)
             for j in range(0, len(images), 2):
                 label = torch.Tensor([1.0])
-                data.append((images[j], images[j + 1], label))
+                scp.append((images[j], images[j + 1], label))
 
         # different-class pairs
+        dcp = []
         for i in range(10):
             for j in range(i):
                 images1 = random.sample(self.images[i], k)
                 images2 = random.sample(self.images[j], k)
                 labels = [torch.Tensor([0.0]) for _ in range(k)]
-                data.extend(zip(images1, images2, labels))
+                dcp.extend(zip(images1, images2, labels))
 
-        random.shuffle(data)
+        # controlled shuffle
+        random.shuffle(scp)
+        random.shuffle(dcp)
+        data = scp + dcp
+        l = len(data) // 2
+        for i in range(0, l, 2):
+            j = 2 * l - i - 1
+            data[i], data[j] = data[j], data[i]
 
-        bp = round(p * (10 * n + 45 * k))
+        bp = round(p * len(data))
         self._testset = data[:bp]
         self._trainset = data[bp:]
 
         return self._trainset, self._testset
     
-    def sample_unlabeled(self, m=10, *, seed=131):
+    def sample_unlabeled(self, m=1, *, seed=111):
         """ Fills the list self.unlabeled with tuples of form 
                             (image1, image2)
             and returns it.
@@ -199,11 +206,16 @@ class SiameseMNIST:
             self._images, self._oneshot = prepare_data()
         return self._oneshot
 
-    def show_sample(self, n=5):
+    def show_train(self, n=5):
         """ Shows n pairs of images from the train set and the corresponding labels. """
         for i in range(n):
             show_pair(*self.trainset[i])
     
+    def show_test(self, n=5):
+        """ Shows n pairs of images from the test set and the corresponding labels. """
+        for i in range(n):
+            show_pair(*self.testset[i])
+
     def show_oneshot(self):
         row1 = torch.cat(self.oneshot[:5], dim=2).squeeze()
         row2 = torch.cat(self.oneshot[5:], dim=2).squeeze()
@@ -242,8 +254,11 @@ if __name__ == "__main__":
     print("Preview")
     dataset.show_oneshot()
 
-    print("\nSample of labeled pairs")
-    dataset.show_sample()
+    print("\nTraining set")
+    dataset.show_train()
+
+    print("\nTest set")
+    dataset.show_test()
 
     print("\nSample of unlabeled pairs")
     dataset.show_unlabeled()
