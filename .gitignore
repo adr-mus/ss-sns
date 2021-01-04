@@ -1,10 +1,18 @@
 /__pycache__
 /.vscode
+/.ipynb_checkpoints
 /data
 /docs
-/models
-/basics
-/processed
+/notebooks
+/SSL_AAAICode
+/pl_paper
 /grid search results.png
 /grid_search_results.ptx
 /res.ipynb
+/ex.py
+/text.py
+/pl_blog/__pycache__
+/pl_blog/.ipynb_checkpoints
+/pl_blog/stare wyniki
+/seven/__pycache__
+/seven/stare wyniki
