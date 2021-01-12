@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 
-from pl_blog.mnist import PseudolabelSNN
+from pl.mnist import PseudolabelSNN
 from data import SiameseMNIST as Dataset
 from criterions import ContrastiveLoss
 

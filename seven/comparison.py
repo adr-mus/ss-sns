@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from .mnist import DiscriminativeSNN, GenerativeSNN
+from seven.mnist import DiscriminativeSNN, GenerativeSNN
 from criterions import ModifiedCrossEntropy, ReconstructionLoss
 from data import SiameseMNIST as SiameseDataset
 

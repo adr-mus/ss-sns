@@ -17,9 +17,9 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 dataset = Dataset()
 
 use_unlabeled = True # whether to use unlabeled examples
-dataset.sample_traintest()
+dataset.sample_traintest(10)
 if use_unlabeled:
-    dataset.sample_unlabeled(20)
+    dataset.sample_unlabeled(100)
 
 batch_size = 60
 positive = torch.utils.data.DataLoader(dataset.positive, batch_size=batch_size // 2, shuffle=True)
@@ -35,18 +35,18 @@ print("Data ready.")
 # initialize nets and optimizers
 net1, net2 = DiscriminativeSNN().to(device), GenerativeSNN().to(device)
 # criterion1 = ModifiedCrossEntropy()
-criterion1 = ContrastiveLoss(margin=1.0)
+criterion1 = ContrastiveLoss(margin=2.0)
 criterion2 = ReconstructionLoss()
 alpha = 0.005  # importance of reconstruction loss
-beta = 0 # l2 regularization
+beta = 0.2 # l2 regularization
 lr = 0.001  # learning rate
 parameters = [{"params": net1.parameters()}, {"params": net2.parameters()}]
 optimizer = torch.optim.RMSprop(parameters, lr=lr, weight_decay=beta)
 print("Nets ready.")
 
 # training parameters
-T = 0.65  # threshold
-E = 5 # epochs
+T = 1.1  # threshold
+E = 16 # epochs
 
 # for diagnostics
 train_log = {
@@ -70,7 +70,7 @@ test_log = {
 # training
 print("Beginning training.")
 for i in range(E):
-    if i != 0 and i % 30 == 0:
+    if i != 0 and i % 10 == 0:
         print(f"{i} epochs passed.")
 
     # for plots
@@ -300,17 +300,17 @@ plt.xlabel("Distance")
 plt.legend()
 plt.show()
 
-best = np.argmax(test_log["accuracy"])
-plt.title(f"Separation of classes in the best model (epoch {best})")
-sns.kdeplot(test_log["neg_dists"][best], fill=True, label="neg")
-sns.kdeplot(test_log["pos_dists"][best], fill=True, label="pos")
-plt.vlines(T, 0, plt.gca().get_ylim()[1], linestyles="--", label="$\\tau$")
-plt.text(
-    0.01,
-    0.94,
-    f"Accuracy: {test_log['accuracy'][best]:.2f}%",
-    transform=plt.gca().transAxes,
-)
-plt.xlabel("Distance")
-plt.legend()
-plt.show()
+# best = np.argmax(test_log["accuracy"])
+# plt.title(f"Separation of classes in the best model (epoch {best})")
+# sns.kdeplot(test_log["neg_dists"][best], fill=True, label="neg")
+# sns.kdeplot(test_log["pos_dists"][best], fill=True, label="pos")
+# plt.vlines(T, 0, plt.gca().get_ylim()[1], linestyles="--", label="$\\tau$")
+# plt.text(
+#     0.01,
+#     0.94,
+#     f"Accuracy: {test_log['accuracy'][best]:.2f}%",
+#     transform=plt.gca().transAxes,
+# )
+# plt.xlabel("Distance")
+# plt.legend()
+# plt.show()
