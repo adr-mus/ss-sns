@@ -53,13 +53,20 @@ class DataPreparation:
                 torchvision.transforms.Normalize((0.1307,), (0.3081,)),
             ]
         )
-        trainset = torchvision.datasets.MNIST(os.path.join("data", "downloaded"), transform=transform, download=True)
+        trainset = torchvision.datasets.MNIST(
+            os.path.join("data", "downloaded"), transform=transform, download=True
+        )
         train_classes = [[] for _ in range(10)]
         for image, label in trainset:
             train_classes[label].append(image)
         oneshot = [images[-1] for images in train_classes]
 
-        testset = torchvision.datasets.MNIST(os.path.join("data", "downloaded"), transform=transform, download=True, train=False)
+        testset = torchvision.datasets.MNIST(
+            os.path.join("data", "downloaded"),
+            transform=transform,
+            download=True,
+            train=False,
+        )
         test_classes = [[] for _ in range(10)]
         for image, label in testset:
             test_classes[label].append(image)
@@ -69,33 +76,56 @@ class DataPreparation:
         if cls.__name__ not in os.listdir(os.path.join("data", "processed")):
             os.mkdir(os.path.join("data", "processed", cls.__name__))
 
-        torch.save(train_classes, os.path.join("data", "processed", cls.__name__, "train_classes.pth"))
-        torch.save(test_classes, os.path.join("data", "processed", cls.__name__, "test_classes.pth"))
-        torch.save(oneshot, os.path.join("data", "processed", cls.__name__, "oneshot.pth"))
+        torch.save(
+            train_classes,
+            os.path.join("data", "processed", cls.__name__, "train_classes.pth"),
+        )
+        torch.save(
+            test_classes,
+            os.path.join("data", "processed", cls.__name__, "test_classes.pth"),
+        )
+        torch.save(
+            oneshot, os.path.join("data", "processed", cls.__name__, "oneshot.pth")
+        )
 
         return train_classes, test_classes, oneshot
-    
+
     @staticmethod
     def prepare_CIFAR10(cls):
         if "data" not in os.listdir():
             os.mkdir("data")
-        train_transform = torchvision.transforms.Compose([
-            torchvision.transforms.RandomCrop(32, padding=4),
-            torchvision.transforms.RandomHorizontalFlip(),
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-        trainset = torchvision.datasets.CIFAR10(os.path.join("data", "downloaded"), transform=train_transform, download=True)
+        train_transform = torchvision.transforms.Compose(
+            [
+                torchvision.transforms.RandomCrop(32, padding=4),
+                torchvision.transforms.RandomHorizontalFlip(),
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(
+                    (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
+                ),
+            ]
+        )
+        trainset = torchvision.datasets.CIFAR10(
+            os.path.join("data", "downloaded"), transform=train_transform, download=True
+        )
         train_classes = [[] for _ in range(10)]
         for image, label in trainset:
             train_classes[label].append(image)
         oneshot = [images[-1] for images in train_classes]
 
-        test_transform = torchvision.transforms.Compose([
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-        testset = torchvision.datasets.CIFAR10(os.path.join("data", "downloaded"), transform=test_transform, download=True, train=False)
+        test_transform = torchvision.transforms.Compose(
+            [
+                torchvision.transforms.ToTensor(),
+                torchvision.transforms.Normalize(
+                    (0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)
+                ),
+            ]
+        )
+        testset = torchvision.datasets.CIFAR10(
+            os.path.join("data", "downloaded"),
+            transform=test_transform,
+            download=True,
+            train=False,
+        )
         test_classes = [[] for _ in range(10)]
         for image, label in testset:
             test_classes[label].append(image)
@@ -105,9 +135,17 @@ class DataPreparation:
         if cls.__name__ not in os.listdir(os.path.join("data", "processed")):
             os.mkdir(os.path.join("data", "processed", cls.__name__))
 
-        torch.save(train_classes, os.path.join("data", "processed", cls.__name__, "train_classes.pth"))
-        torch.save(test_classes, os.path.join("data", "processed", cls.__name__, "test_classes.pth"))
-        torch.save(oneshot, os.path.join("data", "processed", cls.__name__, "oneshot.pth"))
+        torch.save(
+            train_classes,
+            os.path.join("data", "processed", cls.__name__, "train_classes.pth"),
+        )
+        torch.save(
+            test_classes,
+            os.path.join("data", "processed", cls.__name__, "test_classes.pth"),
+        )
+        torch.save(
+            oneshot, os.path.join("data", "processed", cls.__name__, "oneshot.pth")
+        )
 
         return train_classes, test_classes, oneshot
 
@@ -120,15 +158,17 @@ class BaseDataset:
         raise NotImplementedError
 
     def __init__(self):
-        self._classes = None # dataset grouped by classes
-        self._test_classes = None # dedicated test set grouped by classes
-        self._oneshot = None # oneshot sample
+        self._classes = None  # dataset grouped by classes
+        self._test_classes = None  # dedicated test set grouped by classes
+        self._oneshot = None  # oneshot sample
 
-        self._unlabeled = None # unlabeled pairs
-        self._trainset = None # labeled pairs in training set
-        self._testset = None # labeled pairs in test set
+        self._unlabeled = None  # unlabeled pairs
+        self._trainset = None  # labeled pairs in training set
+        self._testset = None  # labeled pairs in test set
 
-        if not os.path.exists(os.path.join("data", "processed", self.__class__.__name__)):
+        if not os.path.exists(
+            os.path.join("data", "processed", self.__class__.__name__)
+        ):
             self._classes, self._test_classes, self._oneshot = self.prepare_data()
 
     @property
@@ -136,7 +176,7 @@ class BaseDataset:
         if self._classes is None:
             self.load_classes()
         return self._classes
-    
+
     @property
     def test_classes(self):
         if self._test_classes is None:
@@ -160,24 +200,33 @@ class BaseDataset:
         if self._trainset is None:
             raise AttributeError("Use sample_traintest or load_traintest first.")
         return self._trainset
-    
+
     @property
     def testset(self):
         if self._testset is None:
             raise AttributeError("Use sample_traintest or load_traintest first.")
         return self._testset
-    
+
     def sample_traintest(self, *args, **kwargs):
         raise NotImplementedError
 
     def save_traintest(self):
         dataset_name = self.__class__.__name__
-        torch.save(self.trainset, os.path.join("data", "processed", dataset_name, "train_sample.pth"))
-        torch.save(self.testset, os.path.join("data", "processed", dataset_name, "test_sample.pth"))
+        torch.save(
+            self.trainset,
+            os.path.join("data", "processed", dataset_name, "train_sample.pth"),
+        )
+        torch.save(
+            self.testset,
+            os.path.join("data", "processed", dataset_name, "test_sample.pth"),
+        )
 
     def save_unlabeled(self):
         dataset_name = self.__class__.__name__
-        torch.save(self.unlabeled, os.path.join("data", "processed", dataset_name, "unlabeled.pth"))
+        torch.save(
+            self.unlabeled,
+            os.path.join("data", "processed", dataset_name, "unlabeled.pth"),
+        )
 
     def load_traintest(self):
         dataset_name = self.__class__.__name__
@@ -211,8 +260,12 @@ class BaseDataset:
     def load_classes(self):
         dataset_name = self.__class__.__name__
         try:
-            self._classes = torch.load(os.path.join("data", "processed", dataset_name, "train_classes.pth"))
-            self._test_classes = torch.load(os.path.join("data", "processed", dataset_name, "test_classes.pth"))
+            self._classes = torch.load(
+                os.path.join("data", "processed", dataset_name, "train_classes.pth")
+            )
+            self._test_classes = torch.load(
+                os.path.join("data", "processed", dataset_name, "test_classes.pth")
+            )
         except FileNotFoundError:
             self._classes, self._test_classes, self._oneshot = self.prepare_data()
         return self._classes
@@ -220,12 +273,14 @@ class BaseDataset:
     def load_oneshot(self):
         dataset_name = self.__class__.__name__
         try:
-            self._oneshot = torch.load(os.path.join("data", "processed", dataset_name, "oneshot.pth"))
+            self._oneshot = torch.load(
+                os.path.join("data", "processed", dataset_name, "oneshot.pth")
+            )
             return self._oneshot
         except FileNotFoundError:
             self._classes, self._oneshot = self.prepare_data()
         return self._oneshot
-    
+
     def show_oneshot(self):
         oneshot = [image.numpy().transpose((1, 2, 0)) for image in self.oneshot]
         row1 = np.concatenate(oneshot[:5], axis=1)
@@ -287,7 +342,7 @@ class SimpleDataset(BaseDataset):
         self._unlabeled = unlabeled
 
         return self.trainset, self.testset, self.unlabeled
-    
+
     def show_trainset(self, n=5):
         """ Shows n pairs of images from the train set and the corresponding labels. """
         for i in range(n):
@@ -311,14 +366,14 @@ class PseudolabelMNIST(SimpleDataset):
 
 
 class SiameseDataset(BaseDataset):
-    _k, _l = None, None # balancing_numbers(len(labels))
+    _k, _l = None, None  # balancing_numbers(len(labels))
 
     def __init__(self):
         BaseDataset.__init__(self)
 
-        self._positive = None # positive pairs in training set
-        self._negative = None # negative pairs in training set
-    
+        self._positive = None  # positive pairs in training set
+        self._negative = None  # negative pairs in training set
+
     @property
     def positive(self):
         if self._positive is None:
@@ -379,7 +434,7 @@ class SiameseDataset(BaseDataset):
             self._positive = self._trainset[1::2]
             self._negative = self._trainset[::2]
             self._sample_testset(10, seed=seed)
-        
+
     def _sample_testset(self, m, *, seed):
         random.seed(seed)
 
@@ -428,7 +483,7 @@ class SiameseDataset(BaseDataset):
         random.shuffle(data)
 
         self._unlabeled = data
-    
+
     def show_trainset(self, n=5):
         """ Shows n pairs of images from the train set and the corresponding labels. """
         for i in range(n):
@@ -453,28 +508,27 @@ class SiameseMNIST(SiameseDataset):
 
 
 class SiameseCIFAR10(SiameseDataset):
-    labels = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+    labels = [
+        "airplane",
+        "automobile",
+        "bird",
+        "cat",
+        "deer",
+        "dog",
+        "frog",
+        "horse",
+        "ship",
+        "truck",
+    ]
     _k, _l = 9, 2
 
     prepare_data = classmethod(DataPreparation.prepare_CIFAR10)
 
 
-
 if __name__ == "__main__":
     dataset = PseudolabelMNIST()
 
-    # load data or sample it if necessary
-    try:
-        dataset.load_traintest()
-    except FileNotFoundError:
-        dataset.sample_traintest()
-        dataset.save_traintest()
-
-    # try:
-    #     dataset.load_unlabeled()
-    # except FileNotFoundError:
-    #     dataset.sample_unlabeled()
-    #     dataset.save_unlabeled()
+    dataset.sample_traintest()
 
     print("Preview")
     dataset.show_oneshot()

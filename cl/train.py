@@ -30,7 +30,7 @@ def test(T):
             images1, images2, labels = (t.to(device) for t in tensors)
             outputs1, outputs2 = net(images1, images2)
 
-            dists = F.pairwise_distance(outputs1, outputs2).tanh()
+            dists = F.pairwise_distance(outputs1, outputs2)
             preds = (dists <= T).float()
             correct += torch.isclose(labels.squeeze(), preds).sum().item()
             total += preds.shape[0]
@@ -52,7 +52,7 @@ def test(T):
             loss = criterion(outputs1, outputs2, labels.squeeze())
             test_log["total_loss"][-1] += loss.item()
 
-            dists = F.pairwise_distance(outputs1, outputs2).tanh()
+            dists = F.pairwise_distance(outputs1, outputs2)
             preds = (dists <= T).float()
             correct += torch.isclose(labels.squeeze(), preds).sum().item()
             total += preds.shape[0]
@@ -65,36 +65,52 @@ def test(T):
         test_log["accuracy"].append(accuracy)
 
 
-def train(E, T):
+def train(E, T, p):
     for i in range(E):
-        if i != 0 and i % 10 == 0:
+        if i != 0 and i % 20 == 0:
             print(f"{i} epochs passed.")
 
         # logs
         train_log["total_loss"].append(0.0)
 
         net.train()
-        for tensors in train_loader:
-            images1, images2, labels = (t.to(device) for t in tensors)
-            outputs1, outputs2 = net(images1, images2)
-            loss = criterion(outputs1, outputs2, labels.squeeze())
+        if p > 0:
+            for (images1, images2, labels), (images3, images4, p_labels) in zip(it.cycle(train_loader), pseudo_loader):
+                images1, images2, labels = images1.to(device), images2.to(device), labels.to(device)
+                images3, images4, p_labels = images3.to(device), images4.to(device), p_labels.to(device)
+                
+                outputs1, outputs2 = net(images1, images2)
+                outputs3, outputs4 = net(images3, images4)
+                loss = criterion(outputs1, outputs2, labels.squeeze())
+                loss += criterion(outputs3, outputs4, p_labels.squeeze())
 
-            train_log["total_loss"][-1] += loss.item()
+                train_log["total_loss"][-1] += loss.item()
+                
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+        else:
+            for tensors in train_loader:
+                images1, images2, labels = (t.to(device) for t in tensors)
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+                outputs1, outputs2 = net(images1, images2)
+                loss = criterion(outputs1, outputs2, labels.squeeze())
+
+                train_log["total_loss"][-1] += loss.item()
+
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
         test(T)
 
 
 def show_results():
-    E = sum(Es)
-
     # summary - training
     print("Summary of training")
     start = 0  # the first epoch to be taken into consideration
     k = 4
+    E = sum(Es)
     domain = range(start, E)
     ticks = list(range(start, E + 1, (E - start) // k)) 
 
@@ -190,25 +206,23 @@ def show_results():
 
 
 def relabel(p, T):
-    if p == 0:
-        return dataset.trainset
-
     net.eval()
     with torch.no_grad():
-        proba = np.array([])
+        dists = np.array([])
         for images1, images2 in unlabeled_loader:
             images1, images2 = images1.to(device), images2.to(device)
             outputs1, outputs2 = net(images1, images2)
-            dists = F.pairwise_distance(outputs1, outputs2)
-            preds = 1 - dists.tanh()
-            proba = np.append(proba, preds.cpu().numpy())
+            dists = np.append(dists, F.pairwise_distance(outputs1, outputs2).cpu().numpy())
     
-    predictions = (proba > T).astype("float32")
-    indexes = np.argsort(-np.abs(proba - 0.5))
-    bp = int(len(indexes) * p)
-    to_pseudolabel = indexes[:bp]
-    new_train = [(dataset.unlabeled[ix][0], dataset.unlabeled[ix][1], torch.tensor([predictions[ix]])) for ix in to_pseudolabel]
-    return dataset.trainset + new_train
+    predictions = (dists <= T).astype("float32")
+    indexes = np.argsort(dists)
+    bp = int(len(indexes) * p / 2)
+    to_pseudolabel = np.append(indexes[:bp], indexes[-bp:])
+    pseudo_train = [
+        (dataset.unlabeled[ix][0], dataset.unlabeled[ix][1], torch.tensor([predictions[ix]])) 
+        for ix in to_pseudolabel]
+
+    return pseudo_train
 
 
 # load data and prepare it
@@ -221,8 +235,6 @@ train_loader = torch.utils.data.DataLoader(dataset.trainset, batch_size=batch_si
 unlabeled_loader = torch.utils.data.DataLoader(dataset.unlabeled, batch_size=len(dataset.unlabeled))
 test_loader = torch.utils.data.DataLoader(dataset.testset, batch_size=len(dataset.testset))
 print("Data ready.")
-
-criterion = ModifiedCrossEntropy()
 
 # logs
 train_log = {
@@ -239,33 +251,30 @@ test_log = {
     "neg_dists": [],
 }
 
-print("Beginning training.")
-trainset = dataset.trainset
-weight_decays = [24, 9, 5, 3, 3, 3]
-Es = [32, 64, 64, 64, 64, 64]
-Ts = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
+# training parameters
+criterion = ContrastiveLoss(margin=1.0)
+lr = 0.005
+momentum = 0.9
+Es = [32, 96, 128, 128, 128, 128]
+T = 0.6
 dp = 1 / 5
-p = 0
-i = 0
-while p <= 1:
-    pseudoset = relabel(p, Ts[i])
-    pseudo_loader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True)
+
+print("Beginning training.")
+i = p = 0
+while p <= (len(Es) - 1) * dp:
+    if p > 0:
+        pseudoset = relabel(p, T)
+        pseudo_loader = torch.utils.data.DataLoader(pseudoset, batch_size=batch_size, shuffle=True)
 
     net = PseudolabelSNN().to(device)
-    optimizer = torch.optim.Adam(net.parameters(), weight_decay=weight_decays[i])
+    optimizer = torch.optim.SGD(net.parameters(), lr=lr, momentum=momentum)
 
     print(f"Training using {p:.0%} unlabeled data.")
-    train(Es[i], Ts[i])
-
-    if i == 0:
-        batch_size *= 2
+    train(Es[i], T, p)
 
     p += dp
     i += 1
 
 
 print("Training finished.\n")
-T = Ts[-1]
 show_results()
-
-# 3, 3, [12, 12], 24, 48, 1/5
